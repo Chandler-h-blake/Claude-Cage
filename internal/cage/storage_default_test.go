@@ -12,13 +12,23 @@ func TestWindowsInitialDataDirectorySkipsAppData(t *testing.T) {
 		t.Skip("packaged Windows storage selection")
 	}
 	_, root := newStorageFixture(t)
+	other := filepath.Join(root, "other")
+	if err := os.Mkdir(other, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"LOCALAPPDATA", "APPDATA", "TMP", "TEMP"} {
+		t.Setenv(key, other)
+	}
 	appData := filepath.Join(root, "AppData", "Local")
-	t.Setenv("LOCALAPPDATA", appData)
 	app := filepath.Join(appData, "Programs", "Cage")
 	backend := filepath.Join(app, "resources", "cage.exe")
 	writeStorageFixture(t, backend, []byte("backend"))
 	writeStorageFixture(t, filepath.Join(app, "Cage.exe"), []byte("launcher"))
 	writeStorageFixture(t, filepath.Join(app, "Cage.install-id"), []byte("io.github.lee-xeo.claude-cage"))
+	if want := filepath.Join(app, "CageData"); InitialStorageDirectory(backend) != want {
+		t.Fatalf("did not suggest valid install storage %q", want)
+	}
+	t.Setenv("LOCALAPPDATA", appData)
 	if got := InitialStorageDirectory(backend); got != "" {
 		t.Errorf("suggested storage inside AppData: %q", got)
 	}

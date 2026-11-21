@@ -3,8 +3,35 @@ package cage
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+func TestWindowsInitialDataDirectorySkipsAppData(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("packaged Windows storage selection")
+	}
+	_, root := newStorageFixture(t)
+	appData := filepath.Join(root, "AppData", "Local")
+	t.Setenv("LOCALAPPDATA", appData)
+	app := filepath.Join(appData, "Programs", "Cage")
+	backend := filepath.Join(app, "resources", "cage.exe")
+	writeStorageFixture(t, backend, []byte("backend"))
+	writeStorageFixture(t, filepath.Join(app, "Cage.exe"), []byte("launcher"))
+	writeStorageFixture(t, filepath.Join(app, "Cage.install-id"), []byte("io.github.lee-xeo.claude-cage"))
+	if got := InitialStorageDirectory(backend); got != "" {
+		t.Errorf("suggested storage inside AppData: %q", got)
+	}
+
+	alias := filepath.Join(root, "alias")
+	if err := linkStorage(alias, appData); err != nil {
+		t.Fatal(err)
+	}
+	aliasedBackend := filepath.Join(alias, "Programs", "Cage", "resources", "cage.exe")
+	if got := InitialStorageDirectory(aliasedBackend); got != "" {
+		t.Errorf("suggested storage through junction to AppData: %q", got)
+	}
+}
 
 func TestWindowsInitialDataDirectoryAndApplicationBoundary(t *testing.T) {
 	profile, root := newStorageFixture(t)

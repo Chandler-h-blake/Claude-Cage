@@ -5,16 +5,42 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 // InitialStorageDirectory supplies a fresh packaged Windows installation's
-// data location. Profiles and existing storage records keep their own paths.
+// data location when it is suitable for the VM's Unix sockets.
 func InitialStorageDirectory(exe string) string {
-	resolved, err := filepath.EvalSymlinks(exe)
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	resolved, err := paths.Resolve(exe)
 	if err != nil {
 		return ""
 	}
-	return initialStorageDirectory(resolved, runtime.GOOS)
+	directory := initialStorageDirectory(resolved, runtime.GOOS)
+	if directory == "" {
+		return ""
+	}
+	target, err := StoragePhysicalPath(directory)
+	if err != nil {
+		return ""
+	}
+	// AF_UNIX connections and stale socket cleanup can fail in these trees.
+	for _, root := range []string{os.Getenv("LOCALAPPDATA"), os.Getenv("APPDATA"), os.TempDir()} {
+		if root == "" {
+			continue
+		}
+		if StorageContains(root, directory) || StorageContains(root, target) {
+			return ""
+		}
+		physical, err := StoragePhysicalPath(root)
+		if err == nil && StorageContains(physical, target) {
+			return ""
+		}
+	}
+	return directory
 }
 
 func initialStorageDirectory(exe, platform string) string {
